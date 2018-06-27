@@ -1,0 +1,6 @@
+framework module Pods_Passenger_OneWay {
+  umbrella header "Pods-Passenger_OneWay-umbrella.h"
+
+  export *
+  module * { export * }
+}
