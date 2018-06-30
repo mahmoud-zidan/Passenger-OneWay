@@ -11,6 +11,7 @@ import GoogleMaps
 import Alamofire
 import SwiftyJSON
 
+
 class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDelegate {
     var passenger : Model?
     
@@ -21,8 +22,20 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
     var showsUserLocation: Bool = true
     
     @IBOutlet weak var MapView: GMSMapView!
-    
+
      var legs : [Legs] = []
+
+    // for loading location from firebase
+    var Lat : Any!
+    var Lng : Any!
+    
+    // MARK: for custom marker
+    let customMarkerWidth: Int = 50
+    let customMarkerHeight: Int = 70
+   
+    
+    let previewDemoData = [(title: "The Polar Junction", img: #imageLiteral(resourceName: "icons8-1st-48")), (title: "The Lunar Petal", img: #imageLiteral(resourceName: "icons8-circled-2-48"))]
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         print("@@@ 1 @@@")
@@ -57,14 +70,16 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
         self.MapView.settings.zoomGestures  = true
     }
     
-    // Mark: function to create markers
-    func createMarker(titleMarker: String,time:String, latitude: CLLocationDegrees, longitude: CLLocationDegrees) {
+    // MARK: function to create markers
+    func createMarker(titleMarker: String,time:String, latitude: CLLocationDegrees, longitude: CLLocationDegrees, color: UIColor) {
+   
         let marker = GMSMarker()
         marker.title = titleMarker
         marker.snippet = "The Time \(time)"
         marker.position = CLLocationCoordinate2DMake(latitude, longitude)
         marker.map = self.MapView
     }
+    
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Error to get location : \(error)")
@@ -76,8 +91,13 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
         drawPath()
         self.LocationManager.stopUpdatingLocation()
     }
+    
+    // MARK: Draw route between markers
+    
     func drawPath()
     {
+     
+        
         let url = URL(string :"https://maps.googleapis.com/maps/api/directions/json?origin=29.966663,32.549998&destination= 27.856471,34.279848000000015&waypoints=optimize:true| 30.1197986,31.537000300000045 |30.5964923,32.27145870000004|31.26528929999999,32.301866099999984|27.2578957,33.81160669999997&key=AIzaSyC_jTO0llKSEDmQdtu6_UbDo-jqjqeHiC0".addingPercentEncoding(withAllowedCharacters: CharacterSet.urlFragmentAllowed)!)
         Alamofire.request(url!, method: .get).validate().responseJSON { response in
             switch response.result {
@@ -106,7 +126,7 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
         var hours = calendar.component(.hour, from: date)
         var minutes = calendar.component(.minute, from: date)
         var seconds = calendar.component(.second, from: date)
-        createMarker(titleMarker: json.array![0]["start_address"].stringValue, time: "\(hours):\(minutes):\(seconds)", latitude: json.array![0]["start_location"]["lat"].doubleValue, longitude: json.array![0]["start_location"]["lng"].doubleValue)
+        createMarker(titleMarker: json.array![0]["start_address"].stringValue, time: "\(hours):\(minutes):\(seconds)", latitude: json.array![0]["start_location"]["lat"].doubleValue, longitude: json.array![0]["start_location"]["lng"].doubleValue, color: .red)
         legs.removeAll()
         for (_,subJson):(String, JSON) in json {
             let duration : Int = subJson["duration"]["value"].intValue
@@ -121,7 +141,9 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
             minutes+=m
             seconds+=s
             (hours,minutes,seconds)=timeFormatter(hours: hours, minutes: minutes, seconds: seconds)
-            createMarker(titleMarker: end_address, time: "\(hours):\(minutes):\(seconds)", latitude: end_location_lat, longitude: end_location_lng)
+            createMarker(titleMarker: end_address, time: "\(hours):\(minutes):\(seconds)", latitude: end_location_lat, longitude: end_location_lng, color: .red)
+        
+            
             let leg = Legs(end_address: end_address, end_location_lat: end_location_lat, end_location_lng: end_location_lng, start_address: start_address, start_location_lat: start_location_lat, start_location_lng: start_location_lng)
             legs.append(leg)
         }
@@ -147,8 +169,82 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
         return (hour,minute,second)
     }
     
+    // MARK: for tracking
+    
+
+    
+   
+    
+
+    
+    // MARK: Custom Marker implementation
+    
+    func mapView(_ mapView: GMSMapView, didTap marker: GMSMarker) -> Bool {
+        guard let customMarkerView = marker.iconView as? CustomMarkerView else { return false }
+        let img = customMarkerView.img!
+        let customMarker = CustomMarkerView(frame: CGRect(x: 0, y: 0, width: customMarkerWidth, height: customMarkerHeight), image: img, borderColor: UIColor.white, tag: customMarkerView.tag)
+        
+        marker.iconView = customMarker
+        
+        return false
+    }
+    
+    func mapView(_ mapView: GMSMapView, markerInfoContents marker: GMSMarker) -> UIView? {
+        guard let customMarker = marker.iconView as? CustomMarkerView else { return nil }
+        let data = previewDemoData[customMarker.tag]
+        customWindowView.setData(title: data.title, img: data.img)
+        print("@@@ \(previewDemoData[customMarker.tag])")
+        return customWindowView
+    }
+    func mapView(_ mapView: GMSMapView, didCloseInfoWindowOf marker: GMSMarker) {
+        guard let customMarkerView = marker.iconView as? CustomMarkerView else { return }
+        let img = customMarkerView.img!
+        let customMarker = CustomMarkerView(frame: CGRect(x: 0, y: 0, width: customMarkerWidth, height: customMarkerHeight), image: img, borderColor: UIColor.darkGray,tag: customMarkerView.tag)
+        marker.iconView = customMarker
+    }
+    
+    func mapView(_ mapView: GMSMapView, didTapInfoWindowOf marker: GMSMarker) {
+        guard let customMarkerView = marker.iconView as? CustomMarkerView else { return }
+        let tag = customMarkerView.tag
+        // restaurantTapped(tag: tag)
+    }
     
     
+    func setupViews() {
+        view.addSubview(MapView)
+        MapView.topAnchor.constraint(equalTo: view.topAnchor).isActive=true
+        MapView.leftAnchor.constraint(equalTo: view.leftAnchor).isActive=true
+        MapView.rightAnchor.constraint(equalTo: view.rightAnchor).isActive=true
+        MapView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: 60).isActive=true
+        
+        customWindowView=CustomWindowView(frame: CGRect(x: 0, y: 0, width: self.view.frame.width, height: 190))
+        
+      /*  self.view.addSubview(btnMyLocation)
+        btnMyLocation.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -30).isActive=true
+        btnMyLocation.leftAnchor.constraint(equalTo: view.leftAnchor, constant: 20).isActive=true
+        btnMyLocation.widthAnchor.constraint(equalToConstant: 50).isActive=true
+        btnMyLocation.heightAnchor.constraint(equalTo: btnMyLocation.widthAnchor).isActive=true
+       */
+    }
+    
+   /* let btnMyLocation: UIButton = {
+        let btn=UIButton()
+        btn.backgroundColor = UIColor.white
+        btn.setImage(#imageLiteral(resourceName: "globe.png"), for: .normal)
+        btn.layer.cornerRadius = 25
+        btn.clipsToBounds=true
+        btn.tintColor = UIColor.gray
+        btn.imageView?.tintColor=UIColor.gray
+        btn.addTarget(self, action: #selector(btnMyLocationAction), for: .touchUpInside)
+        btn.translatesAutoresizingMaskIntoConstraints=false
+        return btn
+    }()*/
+    
+    var customWindowView: CustomWindowView = {
+        let v=CustomWindowView()
+        return v
+    }()
+    // MARK: create custom navigation bar
     private func NavigationBarItems(){
         // logo
         let Imagetitle = UIImageView(image: #imageLiteral(resourceName: "track.png"))

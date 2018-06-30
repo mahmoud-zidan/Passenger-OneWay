@@ -10,6 +10,7 @@ import UIKit
 import GoogleMaps
 import Alamofire
 import SwiftyJSON
+import FirebaseDatabase
 
 class trackingVC : UIViewController, GMSMapViewDelegate, CLLocationManagerDelegate {
     var passenger : Model?
@@ -17,17 +18,22 @@ class trackingVC : UIViewController, GMSMapViewDelegate, CLLocationManagerDelega
     var location : CLLocation?
     let LocationManager = CLLocationManager()
     
+    var lat : Any!
+    var lng : Any!
+    var timer1 = Timer()
+    var timer2 = Timer()
     open var tracksUserCourse: Bool = true
     var showsUserLocation: Bool = true
     
     @IBOutlet weak var MapView: GMSMapView!
+    let Driver_Marker = GMSMarker()
+    
     
     var legs : [Legs] = []
     override func viewDidLoad() {
         super.viewDidLoad()
         print("@@@ 1 @@@")
         NavigationBarItems()
-        
         // Do any additional setup after loading the view.
         /*   guard let passenger = self.passenger else {
          return
@@ -44,7 +50,7 @@ class trackingVC : UIViewController, GMSMapViewDelegate, CLLocationManagerDelega
         let latitude = self.LocationManager.location?.coordinate.latitude
         let longitude = self.LocationManager.location?.coordinate.longitude
         guard (latitude != nil)  && (longitude != nil) else {
-            print("latitude and longitude is nil")
+            print(" longitude is nil")
             return
         }
         let camera = GMSCameraPosition.camera(withLatitude: latitude!, longitude: longitude!, zoom: 6.0)
@@ -57,6 +63,14 @@ class trackingVC : UIViewController, GMSMapViewDelegate, CLLocationManagerDelega
         self.MapView.settings.zoomGestures  = true
     }
     
+    
+    override func viewDidAppear(_ animated: Bool) {
+        
+        self.timer1 = Timer.scheduledTimer(timeInterval: 0.30, target: self, selector: #selector(loadfromFirebase), userInfo: nil, repeats: true)
+        self.timer2 = Timer.scheduledTimer(timeInterval: 0.31, target: self, selector: #selector(clearMarker), userInfo: nil, repeats: true)
+        loadFirstMoveData()
+    }
+    
     // Mark: function to create markers
     func createMarker(titleMarker: String,time:String, latitude: CLLocationDegrees, longitude: CLLocationDegrees) {
         let marker = GMSMarker()
@@ -66,15 +80,50 @@ class trackingVC : UIViewController, GMSMapViewDelegate, CLLocationManagerDelega
         marker.map = self.MapView
     }
     
+    // MARK: Special marker for driver
+    func createDriverMarker(titleMarker: String, latitude: CLLocationDegrees, longitude: CLLocationDegrees, color: UIColor) {
+        
+        //    let imgArray: [UIImage] = [#imageLiteral(resourceName: "icons8-1st-48"), #imageLiteral(resourceName: "icons8-circled-2-48")]
+        //        for index in imgArray{
+        //      let  custom_marker = CustomMarkerView(frame: CGRect(x: 0, y: 0, width: self.customMarkerWidth, height: self.customMarkerHeight), image: #imageLiteral(resourceName: "icons8-1st-48"), borderColor: .darkGray, tag: 0)
+        //
+        //  marker.iconView = custom_marke
+        
+        let MarkerName = UIImage(named: "car.png")?.withRenderingMode(.alwaysTemplate)
+        let imageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 25, height: 25))
+        imageView.layer.cornerRadius = imageView.frame.size.width / 2
+        imageView.layer.masksToBounds = true
+        imageView.layer.borderWidth = 2
+        imageView.layer.borderColor = UIColor.lightGray.cgColor
+        imageView.tintColor = color
+
+        
+       imageView.image = MarkerName
+        self.Driver_Marker.title = titleMarker
+        self.Driver_Marker.iconView = imageView
+        self.Driver_Marker.snippet = "The Time \(time)"
+        self.Driver_Marker.position = CLLocationCoordinate2DMake(latitude, longitude)
+        self.Driver_Marker.map = self.MapView
+    }
+    
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Error to get location : \(error)")
     }
     
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         print("@@@@@@ Did update location @@@@@@")
+        
+        self.timer1 = Timer.scheduledTimer(timeInterval: 0.30, target: self, selector: #selector(loadfromFirebase), userInfo: nil, repeats: true)
+        self.timer2 = Timer.scheduledTimer(timeInterval: 0.3009, target: self, selector: #selector(clearMarker), userInfo: nil, repeats: true)
+        
         location = locations.last
         drawPath()
         self.LocationManager.stopUpdatingLocation()
+    }
+    
+    // MARK: Update Driver Location
+    @objc func clearMarker(){
+        self.Driver_Marker.map = nil
     }
     func drawPath()
     {
@@ -147,7 +196,61 @@ class trackingVC : UIViewController, GMSMapViewDelegate, CLLocationManagerDelega
         return (hour,minute,second)
     }
     
+    //MARK: load data when driver start to move
+    func loadFirstMoveData(){
+        let ref = Database.database().reference(fromURL: "https://oneway-500ad.firebaseio.com/")
+        ref.child("Trip").child("Driver_Location").observe(.value , with: {(Driver_snapshot: DataSnapshot) in
+            let driver_data = Driver_snapshot.value as? NSDictionary
+            self.lat = driver_data!["Latitude"] as? Double
+            self.lng = driver_data!["Longitude"] as? Double
+            
+            print("@@ First Lat \(self.lat)")
+            print("@@ First Lng \(self.lng)")
+            self.createDriverMarker(titleMarker: "My location\((self.lat as? Double)!)", latitude: (self.lat as? Double)!, longitude: (self.lng as? Double)!, color: .green)
+        })
+        
+    }
     
+    // MARK: tracking the driver
+    @objc func loadfromFirebase(){
+        let ref = Database.database().reference(fromURL: "https://oneway-500ad.firebaseio.com/")
+        ref.child("Trip").child("Driver_Location").observe(.value , with: {(Driver_snapshot: DataSnapshot) in
+            ref.child("Trip").child("destinations").observe(.value , with: {(Destination_snapshot: DataSnapshot) in
+            
+            let driver_data = Driver_snapshot.value as? NSDictionary
+            let destination_data = Destination_snapshot.value as? NSDictionary
+         
+            if(driver_data != nil) && (destination_data != nil){
+               
+                // see if the cuurrent locaion = the destination or not if equal and it is the last point stop updating location and if not the last destination point refresh to the next destination and start updating
+                
+                self.lat = driver_data!["Latitude"] as? Double
+                self.lng = driver_data!["Longitude"] as? Double
+                
+                print("@@ Lat \(self.lat)")
+                print("@@ Lng \(self.lng)")
+                self.createDriverMarker(titleMarker: "My location\((self.lat as? Double)!)", latitude: (self.lat as? Double)!, longitude: (self.lng as? Double)!, color: .green)
+                
+                if (driver_data == destination_data){
+                    // make a condition to handle if not the last destination point
+                    // display alert or noification to the next assigning marker's passengers
+                    print("@@ stop point")
+                    self.createDriverMarker(titleMarker: "My location\((self.lat as? Double)!)", latitude: (self.lat as? Double)!, longitude: (self.lng as? Double)!, color: .green)
+                    
+                }
+                else{
+                    print("@@ updating location")
+                    self.createDriverMarker(titleMarker: "My location\((self.lat as? Double)!)", latitude: (self.lat as? Double)!, longitude: (self.lng as? Double)!, color: .green)
+                   
+                }
+                
+                }
+            else{
+                print("Data is Nil")
+            }
+            })
+        })
+    }
     
     private func NavigationBarItems(){
         // logo
@@ -163,4 +266,3 @@ class trackingVC : UIViewController, GMSMapViewDelegate, CLLocationManagerDelega
         
     }
 }
-
