@@ -206,7 +206,6 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
     func mapView(_ mapView: GMSMapView, didTapInfoWindowOf marker: GMSMarker) {
         guard let customMarkerView = marker.iconView as? CustomMarkerView else { return }
         let tag = customMarkerView.tag
-        // restaurantTapped(tag: tag)
     }
     
     
