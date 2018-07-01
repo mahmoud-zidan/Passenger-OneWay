@@ -168,15 +168,7 @@ class PassengerMap: UIViewController, GMSMapViewDelegate, CLLocationManagerDeleg
         }
         return (hour,minute,second)
     }
-    
-    // MARK: for tracking
-    
 
-    
-   
-    
-
-    
     // MARK: Custom Marker implementation
     
     func mapView(_ mapView: GMSMapView, didTap marker: GMSMarker) -> Bool {
